@@ -1,0 +1,4 @@
+spleeter/
+__pycache__/
+*.pyc
+.env
