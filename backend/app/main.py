@@ -1,28 +1,38 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from auth import create_token, verify_password
-from users import USERS
-from spleeter_service import separate_audio
+from fastapi import FastAPI, UploadFile, File
+import subprocess
 import os
+import uuid
 
 app = FastAPI()
 
 UPLOAD_DIR = "uploads"
+OUTPUT_DIR = "outputs"
+
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-@app.post("/login")
-def login(username: str, password: str):
-    user = USERS.get(username)
-    if not user or not verify_password(password, user["password"]):
-        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+@app.get("/")
+def root():
+    return {"status": "Spleeter backend running"}
 
-    token = create_token({"sub": username, "admin": user["is_admin"]})
-    return {"access_token": token}
+@app.post("/separate")
+async def separate_audio(file: UploadFile = File(...)):
+    file_id = str(uuid.uuid4())
+    input_path = f"{UPLOAD_DIR}/{file_id}_{file.filename}"
+    output_path = f"{OUTPUT_DIR}/{file_id}"
 
-@app.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    path = f"{UPLOAD_DIR}/{file.filename}"
-    with open(path, "wb") as f:
+    with open(input_path, "wb") as f:
         f.write(await file.read())
 
-    separate_audio(path)
-    return {"message": "Separação concluída"}
+    subprocess.run([
+        "spleeter",
+        "separate",
+        "-p", "spleeter:5stems",
+        "-o", OUTPUT_DIR,
+        input_path
+    ], check=True)
+
+    return {
+        "message": "Audio separado com sucesso",
+        "output_folder": output_path
+    }
